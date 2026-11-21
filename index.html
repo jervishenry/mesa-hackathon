@@ -3584,10 +3584,15 @@
         let wizardStep = 1; // 1..4, 5 = summary card
         let wizardState = createDefaultWizardState();
 
+        const memoryStore = {};
+
         function getFutureDateString(daysAhead) {
           const d = new Date();
           d.setDate(d.getDate() + daysAhead);
-          return d.toISOString().split('T')[0];
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return yyyy + '-' + mm + '-' + dd;
         }
 
         function createDefaultWizardState() {
@@ -3612,17 +3617,30 @@
         function readStorage(key) {
           try {
             const raw = localStorage.getItem(key);
-            return raw ? JSON.parse(raw) : null;
+            if (raw) return JSON.parse(raw);
           } catch (err) {
-            return null;
+            // Fall back to in-memory storage when third-party storage is restricted
           }
+          return Object.prototype.hasOwnProperty.call(memoryStore, key)
+            ? memoryStore[key]
+            : null;
         }
 
         function writeStorage(key, value) {
+          memoryStore[key] = value;
           try {
             localStorage.setItem(key, JSON.stringify(value));
           } catch (err) {
-            // Ignore storage quota errors cleanly
+            // Ignore storage quota or sandbox restrictions cleanly
+          }
+        }
+
+        function removeStorage(key) {
+          delete memoryStore[key];
+          try {
+            localStorage.removeItem(key);
+          } catch (err) {
+            // Ignore storage restrictions cleanly
           }
         }
 
@@ -3635,6 +3653,7 @@
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const target = new Date(dateStr + 'T00:00:00');
+          if (Number.isNaN(target.getTime())) return 0;
           const diffMs = target.getTime() - today.getTime();
           return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         }
@@ -3655,7 +3674,16 @@
           viewEl.setAttribute('aria-hidden', 'false');
           closeMobileDrawer();
           closeRemindersPopover();
-          window.scrollTo({ top: 0, behavior: 'instant' });
+          window.scrollTo(0, 0);
+
+          if (viewEl === landingView) {
+            document.querySelectorAll('.reveal').forEach((el) => {
+              const rect = el.getBoundingClientRect();
+              if (rect.top < window.innerHeight) {
+                el.classList.add('is-visible');
+              }
+            });
+          }
         }
 
         function routeUser() {
@@ -3735,7 +3763,7 @@
         });
 
         signOutBtn.addEventListener('click', function () {
-          localStorage.removeItem(STORAGE_USER_KEY);
+          removeStorage(STORAGE_USER_KEY);
           showView(loginView);
         });
 
